@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from passlib.context import CryptContext
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -85,6 +85,7 @@ def get_or_create_catalog(db):
             item = Tag(name=name, slug=slug)
             db.add(item)
             db.flush()
+        tags[slug] = item
 
     return categories, tags
 
@@ -112,19 +113,14 @@ def get_or_create_users(db):
 
 
 def seed_works(db, users, categories, tags):
-    current_count = db.scalar(select(Work.id).order_by(Work.id.desc()).limit(1))
-    current_count = db.scalar(select(Work).count()) if False else None
     target = 30
+    current_total = db.scalar(select(func.count()).select_from(Work)) or 0
+    if current_total >= target:
+        return 0
 
     designers = [users[name] for name, _, role in DEMO_USERS if role == "designer"]
     category_list = list(categories.values())
     tag_list = list(tags.values())
-
-    existing_count = db.scalar(select(Work.id).limit(1))
-    if existing_count is None:
-        current_total = 0
-    else:
-        current_total = len(db.scalars(select(Work.id)).all())
 
     created = 0
     for index in range(current_total + 1, target + 1):
