@@ -8,7 +8,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Category, Work
+from app.models import Category, Tag, Work, WorkTag
 from app.routers.auth import get_current_user
 from app.schemas.work import WorkCreate, WorkListResponse, WorkResponse, WorkUpdate
 
@@ -47,6 +47,7 @@ def list_works(
     limit: int = Query(12, ge=1, le=100),
     search: str | None = Query(None, max_length=100),
     category_id: int | None = Query(None, ge=1),
+    tag_id: int | None = Query(None, ge=1),
     sort: str = Query("newest", pattern="^(newest|oldest)$"),
     db: Session = Depends(get_db),
 ):
@@ -58,6 +59,11 @@ def list_works(
 
     if category_id is not None:
         query = query.where(Work.category_id == category_id)
+
+    if tag_id is not None:
+        if db.get(Tag, tag_id) is None:
+            raise HTTPException(status_code=400, detail="Tag not found")
+        query = query.join(WorkTag, WorkTag.work_id == Work.id).where(WorkTag.tag_id == tag_id)
 
     query = query.order_by(
         Work.created_at.asc() if sort == "oldest" else Work.created_at.desc()
