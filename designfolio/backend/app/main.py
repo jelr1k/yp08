@@ -1,7 +1,6 @@
 """DesignFolio FastAPI entry point."""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from app.routers.auth import router as auth_router
 from app.routers.catalog import router as catalog_router
@@ -28,7 +27,6 @@ app.include_router(likes_router)
 app.include_router(works_router)
 app.include_router(images_router)
 app.include_router(profile_router)
-app.mount("/uploads", StaticFiles(directory="uploads", check_dir=False), name="uploads")
 
 
 @app.get("/api/health", tags=["system"])
