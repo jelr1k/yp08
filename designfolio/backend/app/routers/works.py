@@ -1,5 +1,7 @@
 """REST API for DesignFolio works."""
+from datetime import datetime, timezone
 from math import ceil
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
@@ -11,6 +13,25 @@ from app.routers.auth import get_current_user
 from app.schemas.work import WorkCreate, WorkListResponse, WorkResponse, WorkUpdate
 
 router = APIRouter(prefix="/api/works", tags=["works"])
+
+
+def slugify(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9а-яё]+", "-", value.lower()).strip("-")
+    return slug or "work"
+
+
+def unique_slug(title: str, db: Session, work_id: int | None = None) -> str:
+    base = slugify(title)
+    slug = base
+    counter = 2
+    while True:
+        query = select(Work).where(Work.slug == slug)
+        if work_id is not None:
+            query = query.where(Work.id != work_id)
+        if db.scalar(query) is None:
+            return slug
+        slug = f"{base}-{counter}"
+        counter += 1
 
 
 def get_work_or_404(work_id: int, db: Session) -> Work:
@@ -38,14 +59,11 @@ def list_works(
     if category_id is not None:
         query = query.where(Work.category_id == category_id)
 
-    if sort == "oldest":
-        query = query.order_by(Work.created_at.asc())
-    else:
-        query = query.order_by(Work.created_at.desc())
+    query = query.order_by(
+        Work.created_at.asc() if sort == "oldest" else Work.created_at.desc()
+    )
 
-    total = db.scalar(
-        select(func.count()).select_from(query.order_by(None).subquery())
-    ) or 0
+    total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery())) or 0
     items = db.scalars(query.offset((page - 1) * limit).limit(limit)).all()
 
     return WorkListResponse(
@@ -68,16 +86,19 @@ def create_work(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    category = db.get(Category, payload.category_id)
-    if category is None:
+    if db.get(Category, payload.category_id) is None:
         raise HTTPException(status_code=400, detail="Category not found")
 
+    now = datetime.now(timezone.utc)
     work = Work(
         title=payload.title,
+        slug=unique_slug(payload.title, db),
         description=payload.description,
         category_id=payload.category_id,
         author_id=current_user.id,
         is_hidden=False,
+        created_at=now,
+        updated_at=now,
     )
     db.add(work)
     db.commit()
@@ -101,8 +122,12 @@ def update_work(
     if payload.category_id is not None and db.get(Category, payload.category_id) is None:
         raise HTTPException(status_code=400, detail="Category not found")
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    if "title" in data:
+        work.slug = unique_slug(data["title"], db, work.id)
+    for field, value in data.items():
         setattr(work, field, value)
+    work.updated_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(work)
