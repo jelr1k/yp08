@@ -2,10 +2,12 @@
 from fastapi import FastAPI
 
 from app.routers.auth import router as auth_router
+from app.routers.catalog import router as catalog_router
 from app.routers.works import router as works_router
 
 app = FastAPI(title="DesignFolio API", version="0.1.0")
 app.include_router(auth_router)
+app.include_router(catalog_router)
 app.include_router(works_router)
 
 
